@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <Firebase_ESP_Client.h>
-#include "addons/TokenHelper.h"
-#include "addons/RTDBHelper.h"
+//#include "addons/TokenHelper.h"
+//#include "addons/RTDBHelper.h"
 #include <WiFi.h>
-#include <WiFiClient.h>
+//#include <WiFiClient.h>
 #include <Wire.h>
 #include "MAX30105.h"
 #include "heartRate.h"
@@ -31,7 +31,7 @@ int beatAvg;
 
 // for step counter
 Adafruit_MPU6050 mpu;
-const int step_threshold = 2; // Adjust this threshold based on calibration
+const int step_threshold = 5; // Adjust this threshold based on calibration
 int step_count = 0;
 static float last_accel_magnitude = 0;
 
@@ -52,6 +52,7 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
+//declare functions
 void loop2(void *pvParameters);
 void getHeatRate();
 void getStepCount();
@@ -87,6 +88,7 @@ void setup()
     while (1)
       ;
   }
+
   Serial.println("Place your index finger on the sensor with steady pressure.");
   particleSensor.setup();                    // Configure sensor with default settings
   particleSensor.setPulseAmplitudeRed(0x0A); // Turn Red LED to low to indicate sensor is running
@@ -111,7 +113,7 @@ void setup()
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
   config.database_url = DATABASE_URL;
-  config.token_status_callback = tokenStatusCallback;
+  //config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectNetwork(true);
   fbdo.keepAlive(5, 5, 1);
@@ -149,6 +151,7 @@ void loop2(void *pvParameters)
       Serial.println(lat);
       Serial.println(lng);
     }
+
     FirebaseJson json;
     json.add("heart_rate", beatAvg);
     json.add("steps", step_count);
@@ -192,7 +195,6 @@ void getHeatRate()
 
   Serial.print(", Avg BPM=");
   Serial.print(beatAvg);
-
   Serial.println();
 }
 
