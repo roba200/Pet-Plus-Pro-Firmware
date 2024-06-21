@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <Firebase_ESP_Client.h>
-//#include "addons/TokenHelper.h"
-//#include "addons/RTDBHelper.h"
+// #include "addons/TokenHelper.h"
+// #include "addons/RTDBHelper.h"
 #include <WiFi.h>
-//#include <WiFiClient.h>
+// #include <WiFiClient.h>
 #include <Wire.h>
 #include "MAX30105.h"
 #include "heartRate.h"
@@ -11,6 +11,12 @@
 #include <Adafruit_Sensor.h>
 #include <TinyGPSPlus.h>
 #include <SoftwareSerial.h>
+#include <Preferences.h>
+#include <time.h>
+
+Preferences preferences;
+const char *key = "stepCount";
+// int lastStepCount = -1;
 
 // for gps
 static const int RXPin = 27, TXPin = 14;
@@ -52,14 +58,21 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-//declare functions
+// declare functions
 void loop2(void *pvParameters);
 void getHeatRate();
 void getStepCount();
+void printLocalTime();
 
 void setup()
 {
   Serial.begin(115200);
+
+  // Initialize Preferences with the "my-app" namespace
+  preferences.begin("my-app", false);
+
+  // Read the stored step count (default to 0 if the key doesn't exist)
+  step_count = preferences.getInt(key, 0);
 
   // GPS
   ss.begin(GPSBaud);
@@ -113,10 +126,14 @@ void setup()
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
   config.database_url = DATABASE_URL;
-  //config.token_status_callback = tokenStatusCallback;
+  // config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectNetwork(true);
   fbdo.keepAlive(5, 5, 1);
+
+  // Initialize NTP
+  configTime(19800, 0, "pool.ntp.org");
+  printLocalTime();
 
   // Pin to the task for Core 0 in esp32
   xTaskCreatePinnedToCore(
@@ -135,6 +152,9 @@ void loop()
 
   getHeatRate();
   getStepCount();
+
+  // Serial.println(timeInfo.tm_hour);
+  // Serial.println(timeInfo.tm_min);
 }
 
 void loop2(void *pvParameters)
@@ -148,8 +168,17 @@ void loop2(void *pvParameters)
 
       lat = gps.location.lat();
       lng = gps.location.lng();
-      Serial.println(lat);
-      Serial.println(lng);
+      // Serial.println(lat);
+      // Serial.println(lng);
+    }
+    // Check if a new day has started
+
+    struct tm timeInfo;
+
+    if (!getLocalTime(&timeInfo))
+    {
+      Serial.println("Failed to obtain time");
+      return;
     }
 
     FirebaseJson json;
@@ -158,6 +187,17 @@ void loop2(void *pvParameters)
     json.add("longitude", lng);
     json.add("latitude", lat);
     Firebase.RTDB.updateNodeSilentAsync(&fbdo, path, &json);
+    if (timeInfo.tm_hour == 23 && timeInfo.tm_min == 2 && timeInfo.tm_sec == 0)
+    {
+      json.add("history/" + String(timeInfo.tm_year) + "-"+ String(timeInfo.tm_mon) + "-"+ String(timeInfo.tm_mday) + "-", step_count);
+      Firebase.RTDB.updateNodeSilentAsync(&fbdo, path, &json);
+      
+    }
+    if (timeInfo.tm_hour == 23 && timeInfo.tm_min == 3 && timeInfo.tm_sec == 0){
+      step_count = 0;
+      preferences.putInt(key, 0);
+    }
+    
   }
 }
 
@@ -166,7 +206,7 @@ void getHeatRate()
   long irValue = particleSensor.getIR();
   if (irValue < 50000)
   {
-    Serial.print(" No finger?");
+    // Serial.print(" No finger?");
     beatAvg = 0;
   }
   else
@@ -193,9 +233,9 @@ void getHeatRate()
     }
   }
 
-  Serial.print(", Avg BPM=");
-  Serial.print(beatAvg);
-  Serial.println();
+  // Serial.print(", Avg BPM=");
+  // Serial.print(beatAvg);
+  // Serial.println();
 }
 
 void getStepCount()
@@ -210,9 +250,21 @@ void getStepCount()
   if (current_accel_magnitude - last_accel_magnitude > step_threshold)
   {
     step_count++;
+    preferences.putInt(key, step_count);
     Serial.print("Step detected! Total steps: ");
     Serial.println(step_count);
   }
 
   last_accel_magnitude = current_accel_magnitude;
+}
+
+void printLocalTime()
+{
+  struct tm timeInfo;
+  if (!getLocalTime(&timeInfo))
+  {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeInfo, "%A, %B %d %Y %H:%M:%S");
 }
