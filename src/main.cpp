@@ -13,6 +13,8 @@
 #include <SoftwareSerial.h>
 #include <Preferences.h>
 #include <time.h>
+#define RESET_H 19
+#define RESET_M 0
 
 Preferences preferences;
 const char *key = "stepCount";
@@ -50,7 +52,7 @@ static float last_accel_magnitude = 0;
 #define USER_EMAIL "admin@petproplus.com"
 #define USER_PASSWORD "123456"
 /* Define the WiFi credentials */
-#define WIFI_SSID "Redmi Note 9S"
+#define WIFI_SSID "Redmi Note 11"
 #define WIFI_PASSWORD "12345678"
 String path = "Device";
 // Define Firebase Data object
@@ -187,13 +189,13 @@ void loop2(void *pvParameters)
     json.add("longitude", lng);
     json.add("latitude", lat);
     Firebase.RTDB.updateNodeSilentAsync(&fbdo, path, &json);
-    if (timeInfo.tm_hour == 23 && timeInfo.tm_min == 2 && timeInfo.tm_sec == 0)
+    if (timeInfo.tm_hour == RESET_H && timeInfo.tm_min == RESET_M && timeInfo.tm_sec == 0)
     {
       json.add("history/" + String(timeInfo.tm_year) + "-"+ String(timeInfo.tm_mon) + "-"+ String(timeInfo.tm_mday) + "-", step_count);
       Firebase.RTDB.updateNodeSilentAsync(&fbdo, path, &json);
       
     }
-    if (timeInfo.tm_hour == 23 && timeInfo.tm_min == 3 && timeInfo.tm_sec == 0){
+    if (timeInfo.tm_hour == RESET_H && timeInfo.tm_min == RESET_M + 1 && timeInfo.tm_sec == 0){
       step_count = 0;
       preferences.putInt(key, 0);
     }
