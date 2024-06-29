@@ -1,9 +1,6 @@
 #include <Arduino.h>
 #include <Firebase_ESP_Client.h>
-// #include "addons/TokenHelper.h"
-// #include "addons/RTDBHelper.h"
 #include <WiFi.h>
-// #include <WiFiClient.h>
 #include <Wire.h>
 #include "MAX30105.h"
 #include "heartRate.h"
@@ -13,12 +10,12 @@
 #include <SoftwareSerial.h>
 #include <Preferences.h>
 #include <time.h>
+
 #define RESET_H 19
-#define RESET_M 0
+#define RESET_M 00
 
 Preferences preferences;
 const char *key = "stepCount";
-// int lastStepCount = -1;
 
 // for gps
 static const int RXPin = 27, TXPin = 14;
@@ -30,7 +27,7 @@ double lng = 0;
 
 // for heart rate sensor
 MAX30105 particleSensor;
-const byte RATE_SIZE = 4; // Increase this for more averaging. 4 is good.
+const byte RATE_SIZE = 4; 
 byte rates[RATE_SIZE];    // Array of heart rates
 byte rateSpot = 0;
 long lastBeat = 0; // Time at which the last beat occurred
@@ -44,6 +41,7 @@ int step_count = 0;
 static float last_accel_magnitude = 0;
 
 // for firebase
+
 //  Firebase API_KEY
 #define API_KEY "AIzaSyD7F8qnmzZE8vp7eQibAIsFojcYYTfWjwk"
 // Firebase RTDB URL
@@ -64,7 +62,6 @@ FirebaseConfig config;
 void loop2(void *pvParameters);
 void getHeatRate();
 void getStepCount();
-void printLocalTime();
 
 void setup()
 {
@@ -72,7 +69,6 @@ void setup()
 
   // Initialize Preferences with the "my-app" namespace
   preferences.begin("my-app", false);
-
   // Read the stored step count (default to 0 if the key doesn't exist)
   step_count = preferences.getInt(key, 0);
 
@@ -80,35 +76,17 @@ void setup()
   ss.begin(GPSBaud);
 
   // MPU6050
-  if (!mpu.begin())
-  {
-    Serial.println("Failed to find MPU6050 chip");
-    while (1)
-    {
-      delay(10);
-    }
-  }
-
+  mpu.begin();
   mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
-  Serial.println("MPU6050 Found!");
 
-  // Heart Rate Sensor
-  Serial.println("Initializing...");
-  // Initialize sensor
-  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) // Use default I2C port, 400kHz speed
-  {
-    Serial.println("MAX30105 was not found. Please check wiring/power. ");
-    while (1)
-      ;
-  }
-
-  Serial.println("Place your index finger on the sensor with steady pressure.");
+  //Heart rate sensor
+  particleSensor.begin(Wire, I2C_SPEED_FAST);
   particleSensor.setup();                    // Configure sensor with default settings
   particleSensor.setPulseAmplitudeRed(0x0A); // Turn Red LED to low to indicate sensor is running
   particleSensor.setPulseAmplitudeGreen(0);  // Turn off Green LED
-  Serial.println();
+
 
   // WIFI
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -121,21 +99,20 @@ void setup()
   Serial.println();
   Serial.print("Connected with IP: ");
   Serial.println(WiFi.localIP());
-  Serial.println();
+  
 
   // Firebase
   config.api_key = API_KEY;
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
   config.database_url = DATABASE_URL;
-  // config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectNetwork(true);
   fbdo.keepAlive(5, 5, 1);
 
   // Initialize NTP
   configTime(19800, 0, "pool.ntp.org");
-  printLocalTime();
+
 
   // Pin to the task for Core 0 in esp32
   xTaskCreatePinnedToCore(
@@ -155,8 +132,6 @@ void loop()
   getHeatRate();
   getStepCount();
 
-  // Serial.println(timeInfo.tm_hour);
-  // Serial.println(timeInfo.tm_min);
 }
 
 void loop2(void *pvParameters)
@@ -167,34 +142,36 @@ void loop2(void *pvParameters)
     while (ss.available() > 0)
     {
       gps.encode(ss.read());
-
       lat = gps.location.lat();
       lng = gps.location.lng();
-      // Serial.println(lat);
-      // Serial.println(lng);
     }
-    // Check if a new day has started
 
+    //create a stucture for store time information
     struct tm timeInfo;
 
-    if (!getLocalTime(&timeInfo))
-    {
-      Serial.println("Failed to obtain time");
-      return;
-    }
+    //get the time information
+    getLocalTime(&timeInfo);
 
+    //create a json object to update firebase RTDB
     FirebaseJson json;
+
+    //add data to json object
     json.add("heart_rate", beatAvg);
     json.add("steps", step_count);
     json.add("longitude", lng);
     json.add("latitude", lat);
+
+    //update the json object to the firebase 
     Firebase.RTDB.updateNodeSilentAsync(&fbdo, path, &json);
+
+    //update the daily step count with the information of the date
     if (timeInfo.tm_hour == RESET_H && timeInfo.tm_min == RESET_M && timeInfo.tm_sec == 0)
     {
       json.add("history/" + String(timeInfo.tm_year) + "-"+ String(timeInfo.tm_mon) + "-"+ String(timeInfo.tm_mday) + "-", step_count);
       Firebase.RTDB.updateNodeSilentAsync(&fbdo, path, &json);
       
     }
+    //Reset the step count
     if (timeInfo.tm_hour == RESET_H && timeInfo.tm_min == RESET_M + 1 && timeInfo.tm_sec == 0){
       step_count = 0;
       preferences.putInt(key, 0);
@@ -203,12 +180,12 @@ void loop2(void *pvParameters)
   }
 }
 
+//get the heart rate
 void getHeatRate()
 {
   long irValue = particleSensor.getIR();
   if (irValue < 50000)
   {
-    // Serial.print(" No finger?");
     beatAvg = 0;
   }
   else
@@ -234,39 +211,28 @@ void getHeatRate()
       }
     }
   }
-
-  // Serial.print(", Avg BPM=");
-  // Serial.print(beatAvg);
-  // Serial.println();
 }
 
+//get the step count
 void getStepCount()
 {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
 
+  //get the magnitude of the accelaration vector
   float current_accel_magnitude = sqrt(a.acceleration.x * a.acceleration.x +
                                        a.acceleration.y * a.acceleration.y +
                                        a.acceleration.z * a.acceleration.z);
 
+
+  //check for a peek of a accelaration vector                                     
   if (current_accel_magnitude - last_accel_magnitude > step_threshold)
   {
     step_count++;
     preferences.putInt(key, step_count);
-    Serial.print("Step detected! Total steps: ");
-    Serial.println(step_count);
   }
 
   last_accel_magnitude = current_accel_magnitude;
 }
 
-void printLocalTime()
-{
-  struct tm timeInfo;
-  if (!getLocalTime(&timeInfo))
-  {
-    Serial.println("Failed to obtain time");
-    return;
-  }
-  Serial.println(&timeInfo, "%A, %B %d %Y %H:%M:%S");
-}
+
